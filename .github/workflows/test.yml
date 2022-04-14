@@ -10,12 +10,32 @@ jobs:
   build: # make sure build/ci work properly
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2.3.4
+      - uses: actions/checkout@v3
       - run: |
           npm install
           npm run all
 
+      # Update dist files if there is label dependencies
+      - name: Update dist files
+        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'dependencies')
+        run: |
+          if [[ -z $(git status -s) ]]
+          then
+            echo "No change is required"
+          else
+            echo "Updating dist directory"
+            git config --local user.name "dependabot[bot]"
+            git config --local user.email "49699333+dependabot[bot]@users.noreply.github.com"
+            git add --update
+            git commit --message="Update dist files"
+            git push
+          fi
+
+      # Fail the build if there is dirty change
+      - run: git diff --exit-code
+
   test: # make sure the action works on a clean machine without building
+    needs: [ build ]
     strategy:
       matrix:
         os:
@@ -32,14 +52,16 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v2.3.4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
       - uses: ./
         with:
           version: ${{ matrix.version }}
-          args: --issues-exit-code=0 ./sample/...
+          args: --timeout=3m --issues-exit-code=0 ./sample/...
           only-new-issues: true
 
   test-go-mod-version:
+    needs: [ build ]
     strategy:
       matrix:
         os:
@@ -50,8 +72,9 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v2.3.4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
       - uses: ./
         with:
           working-directory: sample-go-mod
-          args: --issues-exit-code=0 ./...
+          args: --timeout=3m --issues-exit-code=0 ./...

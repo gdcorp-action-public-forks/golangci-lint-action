@@ -20,8 +20,10 @@ inputs:
     description: "if set to true and the action runs on a pull request - the action outputs only newly found issues"
     default: false
     required: true
-  skip-go-installation:
-    description: "if set to true then action uses pre-installed Go"
+  skip-cache:
+    description: |
+      if set to true then the all caching functionality will be complete disabled,
+      takes precedence over all other caching options.
     default: false
     required: true
   skip-pkg-cache:
@@ -33,7 +35,7 @@ inputs:
     default: false
     required: true
 runs:
-  using: "node12"
+  using: "node16"
   main: "dist/run/index.js"
   post: "dist/post_run/index.js"
 branding:

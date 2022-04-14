@@ -1,12 +1,10 @@
 {
   "name": "golanci-lint-action",
-  "version": "2.0.0",
+  "version": "3.1.0",
   "private": true,
   "description": "golangci-lint github action",
   "main": "dist/main.js",
   "scripts": {
-    "prepare-setup-go": "cd node_modules/setup-go && npm run build",
-    "prepare-deps": "npm run prepare-setup-go",
     "build": "tsc && ncc build -o dist/run/ src/main.ts && ncc build -o dist/post_run/ src/post_main.ts",
     "watched_build_main": "tsc && ncc build -w -o dist/run/ src/main.ts",
     "watched_build_post_main": "tsc && ncc build -w -o dist/post_run/ src/post_main.ts",
@@ -15,7 +13,7 @@
     "lint-fix": "eslint **/*.ts --cache --fix",
     "format": "prettier --write **/*.ts",
     "format-check": "prettier --check **/*.ts",
-    "all": "npm run prepare-deps && npm run build && npm run format-check && npm run lint",
+    "all": "npm run build && npm run format-check && npm run lint",
     "local": "npm run build && act -j test -b",
     "local-full-version": "npm run build && act -j test-full-version -b"
   },
@@ -26,28 +24,25 @@
   "author": "golangci",
   "license": "MIT",
   "dependencies": {
-    "@actions/cache": "^1.0.8",
-    "@actions/core": "^1.5.0",
-    "@actions/exec": "^1.1.0",
-    "@actions/github": "^4.0.0",
-    "@actions/tool-cache": "^1.7.1",
+    "@actions/cache": "^2.0.0",
+    "@actions/core": "^1.6.0",
+    "@actions/exec": "^1.1.1",
+    "@actions/github": "^5.0.1",
+    "@actions/tool-cache": "^1.7.2",
     "@types/semver": "^7.3.9",
-    "@types/tmp": "^0.2.2",
-    "setup-go": "git+https://github.com/actions/setup-go.git#v2.1.4",
+    "@types/tmp": "^0.2.3",
     "tmp": "^0.2.1"
   },
   "devDependencies": {
-    "@types/node": "^16.11.10",
-    "@types/uuid": "^8.3.3",
-    "@typescript-eslint/eslint-plugin": "^4.33.0",
-    "@typescript-eslint/parser": "^4.33.0",
-    "@zeit/ncc": "^0.22.3",
-    "eslint": "^7.32.0",
-    "eslint-config-prettier": "^8.3.0",
-    "eslint-plugin-import": "^2.25.3",
+    "@typescript-eslint/eslint-plugin": "^5.18.0",
+    "@typescript-eslint/parser": "^5.18.0",
+    "@vercel/ncc": "^0.33.3",
+    "eslint": "^8.13.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-import": "^2.26.0",
     "eslint-plugin-prettier": "^4.0.0",
     "eslint-plugin-simple-import-sort": "^7.0.0",
-    "prettier": "^2.4.1",
-    "typescript": "^4.3.5"
+    "prettier": "^2.6.2",
+    "typescript": "^4.6.3"
   }
 }
