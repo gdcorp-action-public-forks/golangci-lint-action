@@ -3,7 +3,10 @@ description: "Official golangci-lint action with line-attached annotations for f
 author: "golangci"
 inputs:
   version:
-    description: "version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version"
+    description: |
+      The version of golangci-lint to use.
+      When `install-mode` is `binary` (default) the value can be v1.2 or v1.2.3 or `latest` to use the latest version.
+      When `install-mode` is `goinstall` the value can be v1.2.3, `latest`, or the hash of a commit.
     required: false
   args:
     description: "golangci-lint command line arguments"
@@ -18,21 +21,25 @@ inputs:
     required: false
   only-new-issues:
     description: "if set to true and the action runs on a pull request - the action outputs only newly found issues"
-    default: false
+    default: 'false'
     required: false
   skip-cache:
     description: |
       if set to true then the all caching functionality will be complete disabled,
       takes precedence over all other caching options.
-    default: false
+    default: 'false'
     required: false
   skip-pkg-cache:
     description: "if set to true then the action doesn't cache or restore ~/go/pkg."
-    default: false
+    default: 'false'
     required: false
   skip-build-cache:
     description: "if set to true then the action doesn't cache or restore ~/.cache/go-build."
-    default: false
+    default: 'false'
+    required: false
+  install-mode:
+    description: "The mode to install golangci-lint. It can be 'binary' or 'goinstall'."
+    default: "binary"
     required: false
 runs:
   using: "node16"

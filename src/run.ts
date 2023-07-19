@@ -7,7 +7,7 @@ import { dir } from "tmp"
 import { promisify } from "util"
 
 import { restoreCache, saveCache } from "./cache"
-import { installLint } from "./install"
+import { installLint, InstallMode } from "./install"
 import { findLintVersion } from "./version"
 
 const execShellCommand = promisify(exec)
@@ -15,8 +15,10 @@ const writeFile = promisify(fs.writeFile)
 const createTempDir = promisify(dir)
 
 async function prepareLint(): Promise<string> {
-  const versionConfig = await findLintVersion()
-  return await installLint(versionConfig)
+  const mode = core.getInput("install-mode").toLowerCase()
+  const versionConfig = await findLintVersion(<InstallMode>mode)
+
+  return await installLint(versionConfig, <InstallMode>mode)
 }
 
 async function fetchPatch(): Promise<string> {
@@ -83,15 +85,15 @@ async function prepareEnv(): Promise<Env> {
   const startedAt = Date.now()
 
   // Prepare cache, lint and go in parallel.
-  const restoreCachePromise = restoreCache()
+  await restoreCache()
   const prepareLintPromise = prepareLint()
   const patchPromise = fetchPatch()
 
   const lintPath = await prepareLintPromise
-  await restoreCachePromise
   const patchPath = await patchPromise
 
   core.info(`Prepared env in ${Date.now() - startedAt}ms`)
+
   return { lintPath, patchPath }
 }
 
@@ -116,21 +118,30 @@ async function runLint(lintPath: string, patchPath: string): Promise<void> {
     printOutput(res)
   }
 
-  const userArgs = core.getInput(`args`)
+  let userArgs = core.getInput(`args`)
   const addedArgs: string[] = []
 
-  const userArgNames = new Set<string>(
-    userArgs
-      .trim()
-      .split(/\s+/)
-      .map((arg) => arg.split(`=`)[0])
-      .filter((arg) => arg.startsWith(`-`))
-      .map((arg) => arg.replace(/^-+/, ``))
-  )
-  if (userArgNames.has(`out-format`)) {
-    throw new Error(`please, don't change out-format for golangci-lint: it can be broken in a future`)
-  }
-  addedArgs.push(`--out-format=github-actions`)
+  const userArgsList = userArgs
+    .trim()
+    .split(/\s+/)
+    .filter((arg) => arg.startsWith(`-`))
+    .map((arg) => arg.replace(/^-+/, ``))
+    .map((arg) => arg.split(/=(.*)/, 2))
+    .map<[string, string]>(([key, value]) => [key.toLowerCase(), value ?? ""])
+
+  const userArgsMap = new Map<string, string>(userArgsList)
+  const userArgNames = new Set<string>(userArgsList.map(([key]) => key))
+
+  const formats = (userArgsMap.get("out-format") || "")
+    .trim()
+    .split(",")
+    .filter((f) => f.length > 0)
+    .filter((f) => !f.startsWith(`github-actions`))
+    .concat("github-actions")
+    .join(",")
+
+  addedArgs.push(`--out-format=${formats}`)
+  userArgs = userArgs.replace(/--out-format=\S*/gi, "").trim()
 
   if (patchPath) {
     if (userArgNames.has(`new`) || userArgNames.has(`new-from-rev`) || userArgNames.has(`new-from-patch`)) {
@@ -159,8 +170,10 @@ async function runLint(lintPath: string, patchPath: string): Promise<void> {
     cmdArgs.cwd = path.resolve(workingDirectory)
   }
 
-  const cmd = `${lintPath} run ${addedArgs.join(` `)} ${userArgs}`.trimRight()
+  const cmd = `${lintPath} run ${addedArgs.join(` `)} ${userArgs}`.trimEnd()
+
   core.info(`Running [${cmd}] in [${cmdArgs.cwd || ``}] ...`)
+
   const startedAt = Date.now()
   try {
     const res = await execShellCommand(cmd, cmdArgs)

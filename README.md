@@ -23,50 +23,58 @@ Add `.github/workflows/golangci-lint.yml` with the following contents:
 name: golangci-lint
 on:
   push:
-    tags:
-      - v*
     branches:
       - master
       - main
   pull_request:
+
 permissions:
   contents: read
   # Optional: allow read access to pull request. Use with `only-new-issues` option.
   # pull-requests: read
+
 jobs:
   golangci:
     name: lint
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v3
       - uses: actions/setup-go@v4
         with:
-          go-version: '1.17'
+          go-version: '1.20'
           cache: false
-      - uses: actions/checkout@v3
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          # Optional: version of golangci-lint to use in form of v1.2 or v1.2.3 or `latest` to use the latest version
-          version: v1.29
+          # Require: The version of golangci-lint to use.
+          # When `install-mode` is `binary` (default) the value can be v1.2 or v1.2.3 or `latest` to use the latest version.
+          # When `install-mode` is `goinstall` the value can be v1.2.3, `latest`, or the hash of a commit.
+          version: v1.53
 
           # Optional: working directory, useful for monorepos
           # working-directory: somedir
 
           # Optional: golangci-lint command line arguments.
-          # args: --issues-exit-code=0
+          #
+          # Note: By default, the `.golangci.yml` file should be at the root of the repository.
+          # The location of the configuration file can be changed by using `--config=`
+          # args: --timeout=30m --config=/my/path/.golangci.yml --issues-exit-code=0 
 
           # Optional: show only new issues if it's a pull request. The default value is `false`.
           # only-new-issues: true
 
-          # Optional: if set to true then the all caching functionality will be complete disabled,
+          # Optional: if set to true, then all caching functionality will be completely disabled,
           #           takes precedence over all other caching options.
           # skip-cache: true
 
-          # Optional: if set to true then the action don't cache or restore ~/go/pkg.
+          # Optional: if set to true, then the action won't cache or restore ~/go/pkg.
           # skip-pkg-cache: true
 
-          # Optional: if set to true then the action don't cache or restore ~/.cache/go-build.
+          # Optional: if set to true, then the action won't cache or restore ~/.cache/go-build.
           # skip-build-cache: true
+
+          # Optional: The mode to install golangci-lint. It can be 'binary' or 'goinstall'.
+          # install-mode: "goinstall"
 ```
 
 We recommend running this action in a job separate from other jobs (`go test`, etc)
@@ -80,21 +88,21 @@ If you need to run linters for specific operating systems, you will need to use 
 name: golangci-lint
 on:
   push:
-    tags:
-      - v*
     branches:
       - master
       - main
   pull_request:
+
 permissions:
   contents: read
   # Optional: allow read access to pull request. Use with `only-new-issues` option.
   # pull-requests: read
+
 jobs:
   golangci:
     strategy:
       matrix:
-        go: [1.17]
+        go: ['1.20']
         os: [macos-latest, windows-latest]
     name: lint
     runs-on: ${{ matrix.os }}
@@ -107,16 +115,25 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
         with:
-          # Required: the version of golangci-lint is required and must be specified without patch version: we always use the latest patch version.
-          version: v1.29
+          # Require: The version of golangci-lint to use.
+          # When `install-mode` is `binary` (default) the value can be v1.2 or v1.2.3 or `latest` to use the latest version.
+          # When `install-mode` is `goinstall` the value can be v1.2.3, `latest`, or the hash of a commit.
+          version: v1.53
+
           # Optional: working directory, useful for monorepos
           # working-directory: somedir
 
           # Optional: golangci-lint command line arguments.
-          # args: --issues-exit-code=0
+          # 
+          # Note: by default the `.golangci.yml` file should be at the root of the repository.
+          # The location of the configuration file can be changed by using `--config=`
+          # args: --timeout=30m --config=/my/path/.golangci.yml --issues-exit-code=0
 
           # Optional: show only new issues if it's a pull request. The default value is `false`.
           # only-new-issues: true
+
+          # Optional:The mode to install golangci-lint. It can be 'binary' or 'goinstall'.
+          # install-mode: "goinstall"
 ```
 
 You will also likely need to add the following `.gitattributes` file to ensure that line endings for windows builds are properly formatted:
