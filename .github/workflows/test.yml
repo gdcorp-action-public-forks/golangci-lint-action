@@ -11,9 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - if: ${{ !(github.event_name == 'pull_request' && (github.event.pull_request.user.id == 49699333 || contains(github.event.pull_request.labels.*.name, 'dependencies'))) }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.1.2
       - if: github.event_name == 'pull_request' && (github.event.pull_request.user.id == 49699333 || contains(github.event.pull_request.labels.*.name, 'dependencies'))
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.1.2
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
@@ -59,7 +59,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.1.2
       - uses: actions/setup-go@v5
         with:
           go-version: oldstable
@@ -88,7 +88,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.1.2
       - uses: actions/setup-go@v5
         with:
           go-version: oldstable
@@ -112,7 +112,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.1.2
       - uses: actions/setup-go@v5
         with:
           go-version: oldstable
