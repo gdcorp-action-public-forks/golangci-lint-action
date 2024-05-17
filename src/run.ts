@@ -1,5 +1,6 @@
 import * as core from "@actions/core"
 import * as github from "@actions/github"
+import { Context } from "@actions/github/lib/context"
 import { exec, ExecOptions } from "child_process"
 import * as fs from "fs"
 import * as path from "path"
@@ -15,6 +16,10 @@ const execShellCommand = promisify(exec)
 const writeFile = promisify(fs.writeFile)
 const createTempDir = promisify(dir)
 
+function isOnlyNewIssues(): boolean {
+  return core.getBooleanInput(`only-new-issues`, { required: true })
+}
+
 async function prepareLint(): Promise<string> {
   const mode = core.getInput("install-mode").toLowerCase()
   const versionConfig = await findLintVersion(<InstallMode>mode)
@@ -23,31 +28,41 @@ async function prepareLint(): Promise<string> {
 }
 
 async function fetchPatch(): Promise<string> {
-  const onlyNewIssues = core.getInput(`only-new-issues`, { required: true }).trim()
-  if (onlyNewIssues !== `false` && onlyNewIssues !== `true`) {
-    throw new Error(`invalid value of "only-new-issues": "${onlyNewIssues}", expected "true" or "false"`)
-  }
-  if (onlyNewIssues === `false`) {
+  if (!isOnlyNewIssues()) {
     return ``
   }
 
   const ctx = github.context
-  if (ctx.eventName !== `pull_request`) {
-    core.info(`Not fetching patch for showing only new issues because it's not a pull request context: event name is ${ctx.eventName}`)
-    return ``
+
+  switch (ctx.eventName) {
+    case `pull_request`:
+    case `pull_request_target`:
+      return await fetchPullRequestPatch(ctx)
+    case `push`:
+      return await fetchPushPatch(ctx)
+    case `merge_group`:
+      return ``
+    default:
+      core.info(`Not fetching patch for showing only new issues because it's not a pull request context: event name is ${ctx.eventName}`)
+      return ``
   }
-  const pull = ctx.payload.pull_request
-  if (!pull) {
+}
+
+async function fetchPullRequestPatch(ctx: Context): Promise<string> {
+  const pr = ctx.payload.pull_request
+  if (!pr) {
     core.warning(`No pull request in context`)
     return ``
   }
+
   const octokit = github.getOctokit(core.getInput(`github-token`, { required: true }))
+
   let patch: string
   try {
     const patchResp = await octokit.rest.pulls.get({
       owner: ctx.repo.owner,
       repo: ctx.repo.repo,
-      [`pull_number`]: pull.number,
+      [`pull_number`]: pr.number,
       mediaType: {
         format: `diff`,
       },
@@ -77,6 +92,44 @@ async function fetchPatch(): Promise<string> {
   }
 }
 
+async function fetchPushPatch(ctx: Context): Promise<string> {
+  const octokit = github.getOctokit(core.getInput(`github-token`, { required: true }))
+
+  let patch: string
+  try {
+    const patchResp = await octokit.rest.repos.compareCommitsWithBasehead({
+      owner: ctx.repo.owner,
+      repo: ctx.repo.repo,
+      basehead: `${ctx.payload.before}...${ctx.payload.after}`,
+      mediaType: {
+        format: `diff`,
+      },
+    })
+
+    if (patchResp.status !== 200) {
+      core.warning(`failed to fetch push patch: response status is ${patchResp.status}`)
+      return `` // don't fail the action, but analyze without patch
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    patch = patchResp.data as any
+  } catch (err) {
+    console.warn(`failed to fetch push patch:`, err)
+    return `` // don't fail the action, but analyze without patch
+  }
+
+  try {
+    const tempDir = await createTempDir()
+    const patchPath = path.join(tempDir, "push.patch")
+    core.info(`Writing patch to ${patchPath}`)
+    await writeFile(patchPath, alterDiffPatch(patch))
+    return patchPath
+  } catch (err) {
+    console.warn(`failed to save pull request patch:`, err)
+    return `` // don't fail the action, but analyze without patch
+  }
+}
+
 type Env = {
   lintPath: string
   patchPath: string
@@ -87,11 +140,9 @@ async function prepareEnv(): Promise<Env> {
 
   // Prepare cache, lint and go in parallel.
   await restoreCache()
-  const prepareLintPromise = prepareLint()
-  const patchPromise = fetchPatch()
 
-  const lintPath = await prepareLintPromise
-  const patchPath = await patchPromise
+  const lintPath = await prepareLint()
+  const patchPath = await fetchPatch()
 
   core.info(`Prepared env in ${Date.now() - startedAt}ms`)
 
@@ -133,30 +184,68 @@ async function runLint(lintPath: string, patchPath: string): Promise<void> {
   const userArgsMap = new Map<string, string>(userArgsList)
   const userArgNames = new Set<string>(userArgsList.map(([key]) => key))
 
+  const problemMatchers = core.getBooleanInput(`problem-matchers`)
+
+  if (problemMatchers) {
+    const matchersPath = path.join(__dirname, "../..", "problem-matchers.json")
+    if (fs.existsSync(matchersPath)) {
+      // Adds problem matchers.
+      // https://github.com/actions/setup-go/blob/cdcb36043654635271a94b9a6d1392de5bb323a7/src/main.ts#L81-L83
+      core.info(`##[add-matcher]${matchersPath}`)
+    }
+  }
+
   const formats = (userArgsMap.get("out-format") || "")
     .trim()
     .split(",")
     .filter((f) => f.length > 0)
-    .filter((f) => !f.startsWith(`github-actions`))
-    .concat("github-actions")
+    .filter((f) => !f.startsWith(`github-actions`)) // Removes `github-actions` format.
     .join(",")
 
-  addedArgs.push(`--out-format=${formats}`)
+  if (formats) {
+    // Adds formats but without `github-actions` format.
+    addedArgs.push(`--out-format=${formats}`)
+  }
+
+  // Removes `--out-format` from the user flags because it's already inside `addedArgs`.
   userArgs = userArgs.replace(/--out-format=\S*/gi, "").trim()
 
-  if (patchPath) {
+  if (isOnlyNewIssues()) {
     if (userArgNames.has(`new`) || userArgNames.has(`new-from-rev`) || userArgNames.has(`new-from-patch`)) {
       throw new Error(`please, don't specify manually --new* args when requesting only new issues`)
     }
-    addedArgs.push(`--new-from-patch=${patchPath}`)
 
-    // Override config values.
-    addedArgs.push(`--new=false`)
-    addedArgs.push(`--new-from-rev=`)
+    const ctx = github.context
+
+    core.info(`only new issues on ${ctx.eventName}: ${patchPath}`)
+
+    switch (ctx.eventName) {
+      case `pull_request`:
+      case `pull_request_target`:
+      case `push`:
+        if (patchPath) {
+          addedArgs.push(`--new-from-patch=${patchPath}`)
+
+          // Override config values.
+          addedArgs.push(`--new=false`)
+          addedArgs.push(`--new-from-rev=`)
+        }
+        break
+      case `merge_group`:
+        addedArgs.push(`--new-from-rev=${ctx.payload.merge_group.base_sha}`)
+
+        // Override config values.
+        addedArgs.push(`--new=false`)
+        addedArgs.push(`--new-from-patch=`)
+        break
+      default:
+        break
+    }
   }
 
-  const workingDirectory = core.getInput(`working-directory`)
   const cmdArgs: ExecOptions = {}
+
+  const workingDirectory = core.getInput(`working-directory`)
   if (workingDirectory) {
     if (!fs.existsSync(workingDirectory) || !fs.lstatSync(workingDirectory).isDirectory()) {
       throw new Error(`working-directory (${workingDirectory}) was not a path`)
@@ -169,7 +258,7 @@ async function runLint(lintPath: string, patchPath: string): Promise<void> {
 
   const cmd = `${lintPath} run ${addedArgs.join(` `)} ${userArgs}`.trimEnd()
 
-  core.info(`Running [${cmd}] in [${cmdArgs.cwd || ``}] ...`)
+  core.info(`Running [${cmd}] in [${cmdArgs.cwd || process.cwd()}] ...`)
 
   const startedAt = Date.now()
   try {
